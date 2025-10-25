@@ -1,5 +1,5 @@
 # Use the official Golang image
-FROM golang:1.24.4
+FROM golang:1.25.3
 
 # Install Air (live reload tool)
 RUN go install github.com/air-verse/air@latest
