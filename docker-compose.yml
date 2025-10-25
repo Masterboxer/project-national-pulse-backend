@@ -1,7 +1,7 @@
 services:
-  go-app:
-    container_name: go-app
-    image: masterboxer/go-app:1.0.0
+  national-pulse-app:
+    container_name: national-pulse-app
+    image: masterboxer/national-pulse-app:1.0.0
     build:
       context: .
     volumes:
@@ -9,16 +9,16 @@ services:
       - go-mod-cache:/go/pkg/mod
     command: air
     environment:
-      DATABASE_URL: "host=go_db user=postgres password=postgres dbname=pulse sslmode=disable"
+      DATABASE_URL: "host=national_pulse_db user=postgres password=postgres dbname=pulse sslmode=disable"
     ports:
       - "8000:8000"
     depends_on:
-      - go_db
+      - national_pulse_db
     networks:
       - pulse-net
 
-  go_db:
-    container_name: go_db
+  national_pulse_db:
+    container_name: national_pulse_db
     image: postgres:17
     environment:
       POSTGRES_PASSWORD: postgres
