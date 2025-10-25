@@ -1,4 +1,4 @@
-module masterboxer.com/project-mokuhyo
+module masterboxer.com/project-national-pulse
 
 go 1.23.4
 

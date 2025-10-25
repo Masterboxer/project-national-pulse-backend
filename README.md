@@ -182,7 +182,7 @@ sudo docker compose up --build
 This will:
 
 - Build the Go app container (`go-app`)
-- Start a PostgreSQL container (`go_db`) with database `mokuhyo`
+- Start a PostgreSQL container (`go_db`) with database `pulse`
 - Expose the API on port `8000`
 
 ### 2.5. If Postgres file path is needed to be added temporarily

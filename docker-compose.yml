@@ -9,14 +9,13 @@ services:
       - go-mod-cache:/go/pkg/mod
     command: air
     environment:
-      DATABASE_URL: "host=go_db user=postgres password=postgres dbname=mokuhyo sslmode=disable"
+      DATABASE_URL: "host=go_db user=postgres password=postgres dbname=pulse sslmode=disable"
     ports:
       - "8000:8000"
     depends_on:
       - go_db
-      - ai_gateway
     networks:
-      - mokuhyo-net
+      - pulse-net
 
   go_db:
     container_name: go_db
@@ -24,27 +23,18 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
-      POSTGRES_DB: mokuhyo
+      POSTGRES_DB: pulse
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-      - mokuhyo-net
-
-  ai_gateway:
-    container_name: ai_gateway
-    build:
-      context: ../project_mokuhyo_ai_gateway
-    ports:
-      - "3000:3000"
-    networks:
-      - mokuhyo-net
+      - pulse-net
 
 volumes:
   pgdata: {}
   go-mod-cache: {}
 
 networks:
-  mokuhyo-net:
+  pulse-net:
