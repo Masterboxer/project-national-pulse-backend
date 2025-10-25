@@ -1,0 +1,15 @@
+# .air.toml
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  args = ["-buildvcs=false"]
+  cmd = "go build -o ./tmp/main -buildvcs=false ."
+  bin = "tmp/main"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "vendor"]
+  delay = 1000
+  log = "stdout"
+
+[log]
+  time = true

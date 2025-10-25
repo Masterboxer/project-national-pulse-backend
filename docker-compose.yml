@@ -1,0 +1,50 @@
+services:
+  go-app:
+    container_name: go-app
+    image: masterboxer/go-app:1.0.0
+    build:
+      context: .
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+    command: air
+    environment:
+      DATABASE_URL: "host=go_db user=postgres password=postgres dbname=mokuhyo sslmode=disable"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - go_db
+      - ai_gateway
+    networks:
+      - mokuhyo-net
+
+  go_db:
+    container_name: go_db
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: mokuhyo
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - mokuhyo-net
+
+  ai_gateway:
+    container_name: ai_gateway
+    build:
+      context: ../project_mokuhyo_ai_gateway
+    ports:
+      - "3000:3000"
+    networks:
+      - mokuhyo-net
+
+volumes:
+  pgdata: {}
+  go-mod-cache: {}
+
+networks:
+  mokuhyo-net:
