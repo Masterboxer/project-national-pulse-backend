@@ -1,4 +1,4 @@
-module masterboxer.com/project-national-pulse
+module masterboxer.com/project-civic-action
 
 go 1.23.4
 

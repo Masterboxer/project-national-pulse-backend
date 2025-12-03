@@ -1,7 +1,7 @@
 services:
-  national-pulse-app:
-    container_name: national-pulse-app
-    image: masterboxer/national-pulse-app:1.0.0
+  civic-action-app:
+    container_name: civic-action-app
+    image: masterboxer/civic-action-app:1.0.0
     build:
       context: .
     volumes:
@@ -9,16 +9,16 @@ services:
       - go-mod-cache:/go/pkg/mod
     command: air
     environment:
-      DATABASE_URL: "host=national_pulse_db user=postgres password=postgres dbname=pulse sslmode=disable"
+      DATABASE_URL: "host=civic_action_db user=postgres password=postgres dbname=pulse sslmode=disable"
     ports:
       - "8000:8000"
     depends_on:
-      - national_pulse_db
+      - civic_action_db
     networks:
       - pulse-net
 
-  national_pulse_db:
-    container_name: national_pulse_db
+  civic_action_db:
+    container_name: civic_action_db
     image: postgres:17
     environment:
       POSTGRES_PASSWORD: postgres

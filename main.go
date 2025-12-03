@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"masterboxer.com/project-national-pulse/database"
-	"masterboxer.com/project-national-pulse/routes"
+	"masterboxer.com/project-civic-action/database"
+	"masterboxer.com/project-civic-action/routes"
 )
 
 func main() {
