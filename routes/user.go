@@ -4,7 +4,7 @@ import (
 	"database/sql"
 
 	"github.com/gorilla/mux"
-	"masterboxer.com/project-civic-action/handlers"
+	"masterboxer.com/project-micro-journal/handlers"
 )
 
 func CreateUserRoutes(db *sql.DB, router *mux.Router) *mux.Router {

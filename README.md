@@ -181,8 +181,8 @@ sudo docker compose up --build
 
 This will:
 
-- Build the Go app container (`civic-action-app`)
-- Start a PostgreSQL container (`civic_action_db`) with database `pulse`
+- Build the Go app container (`micro-journal-app`)
+- Start a PostgreSQL container (`micro_journal_db`) with database `pulse`
 - Expose the API on port `8000`
 
 ### 2.5. If Postgres file path is needed to be added temporarily

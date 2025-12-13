@@ -1,4 +1,4 @@
-module masterboxer.com/project-civic-action
+module masterboxer.com/project-micro-journal
 
 go 1.23.4
 

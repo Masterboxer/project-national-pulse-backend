@@ -10,7 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
-	"masterboxer.com/project-civic-action/models"
+	"masterboxer.com/project-micro-journal/models"
 )
 
 func GetUsers(db *sql.DB) http.HandlerFunc {

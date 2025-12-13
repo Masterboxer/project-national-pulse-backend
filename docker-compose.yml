@@ -1,7 +1,7 @@
 services:
-  civic-action-app:
-    container_name: civic-action-app
-    image: masterboxer/civic-action-app:1.0.0
+  micro-journal-app:
+    container_name: micro-journal-app
+    image: masterboxer/micro-journal-app:1.0.0
     build:
       context: .
     volumes:
@@ -9,16 +9,16 @@ services:
       - go-mod-cache:/go/pkg/mod
     command: air
     environment:
-      DATABASE_URL: "host=civic_action_db user=postgres password=postgres dbname=pulse sslmode=disable"
+      DATABASE_URL: "host=micro_journal_db user=postgres password=postgres dbname=pulse sslmode=disable"
     ports:
       - "8000:8000"
     depends_on:
-      - civic_action_db
+      - micro_journal_db
     networks:
       - pulse-net
 
-  civic_action_db:
-    container_name: civic_action_db
+  micro_journal_db:
+    container_name: micro_journal_db
     image: postgres:17
     environment:
       POSTGRES_PASSWORD: postgres
