@@ -15,7 +15,8 @@ import (
 
 func GetUsers(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query("SELECT id, name, COALESCE(age, 0), COALESCE(gender, ''), email, password FROM users")
+		rows, err := db.Query(`SELECT id, username, display_name, COALESCE(age, 0), 
+            COALESCE(gender, ''), email, password, created_at FROM users`)
 		if err != nil {
 			http.Error(w, "Database query failed", http.StatusInternalServerError)
 			log.Println(err)
@@ -26,7 +27,8 @@ func GetUsers(db *sql.DB) http.HandlerFunc {
 		var users []models.User
 		for rows.Next() {
 			var u models.User
-			if err := rows.Scan(&u.ID, &u.Name, &u.Age, &u.Gender, &u.Email, &u.Password); err != nil {
+			if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Age,
+				&u.Gender, &u.Email, &u.Password, &u.CreatedAt); err != nil {
 				http.Error(w, "Error scanning user data", http.StatusInternalServerError)
 				log.Println(err)
 				return
@@ -50,8 +52,10 @@ func GetUserById(db *sql.DB) http.HandlerFunc {
 		id := vars["id"]
 
 		var u models.User
-		err := db.QueryRow("SELECT id, name, COALESCE(age, 0), COALESCE(gender, ''), email, password FROM users WHERE id = $1", id).
-			Scan(&u.ID, &u.Name, &u.Age, &u.Gender, &u.Email, &u.Password)
+		err := db.QueryRow(`SELECT id, username, display_name, COALESCE(age, 0), 
+            COALESCE(gender, ''), email, password, created_at FROM users WHERE id = $1`, id).
+			Scan(&u.ID, &u.Username, &u.DisplayName, &u.Age, &u.Gender, &u.Email,
+				&u.Password, &u.CreatedAt)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				http.Error(w, "User not found", http.StatusNotFound)
@@ -73,8 +77,8 @@ func DeleteUser(db *sql.DB) http.HandlerFunc {
 		id := vars["id"]
 
 		var u models.User
-		err := db.QueryRow("SELECT id, name, email FROM users WHERE id = $1", id).
-			Scan(&u.ID, &u.Name, &u.Email)
+		err := db.QueryRow("SELECT id, username, email FROM users WHERE id = $1", id).
+			Scan(&u.ID, &u.Username, &u.Email)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				http.Error(w, "User not found", http.StatusNotFound)
@@ -99,10 +103,13 @@ func DeleteUser(db *sql.DB) http.HandlerFunc {
 func CreateUser(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var u models.User
-		json.NewDecoder(r.Body).Decode(&u)
+		if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
 
 		if u.Password == "" {
-			http.Error(w, "Password cannot be empty", http.StatusInternalServerError)
+			http.Error(w, "Password cannot be empty", http.StatusBadRequest)
 			return
 		}
 
@@ -113,12 +120,15 @@ func CreateUser(db *sql.DB) http.HandlerFunc {
 		}
 
 		err = db.QueryRow(
-			"INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id",
-			u.Name, u.Email, string(hashedPassword),
-		).Scan(&u.ID)
+			`INSERT INTO users (username, display_name, age, gender, email, password, created_at) 
+            VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, created_at`,
+			u.Username, u.DisplayName, nullInt(u.Age), nullString(u.Gender),
+			u.Email, string(hashedPassword),
+		).Scan(&u.ID, &u.CreatedAt)
 
 		if err != nil {
 			http.Error(w, "Failed to create user", http.StatusInternalServerError)
+			log.Println(err)
 			return
 		}
 
@@ -142,9 +152,14 @@ func UpdateUser(db *sql.DB) http.HandlerFunc {
 		args := []interface{}{}
 		i := 1
 
-		if u.Name != "" {
-			setClauses = append(setClauses, "name = $"+strconv.Itoa(i))
-			args = append(args, u.Name)
+		if u.Username != "" {
+			setClauses = append(setClauses, "username = $"+strconv.Itoa(i))
+			args = append(args, u.Username)
+			i++
+		}
+		if u.DisplayName != "" {
+			setClauses = append(setClauses, "display_name = $"+strconv.Itoa(i))
+			args = append(args, u.DisplayName)
 			i++
 		}
 		if u.Email != "" {
@@ -168,7 +183,8 @@ func UpdateUser(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		sqlStr := "UPDATE users SET " + strings.Join(setClauses, ", ") + " WHERE id = $" + strconv.Itoa(i)
+		sqlStr := "UPDATE users SET " + strings.Join(setClauses, ", ") +
+			" WHERE id = $" + strconv.Itoa(i)
 		args = append(args, id)
 
 		_, err := db.Exec(sqlStr, args...)
@@ -179,8 +195,11 @@ func UpdateUser(db *sql.DB) http.HandlerFunc {
 		}
 
 		var updatedUser models.User
-		err = db.QueryRow("SELECT id, name, COALESCE(age, 0), COALESCE(gender, ''), email, password FROM users WHERE id = $1", id).
-			Scan(&updatedUser.ID, &updatedUser.Name, &updatedUser.Age, &updatedUser.Gender, &updatedUser.Email, &updatedUser.Password)
+		err = db.QueryRow(`SELECT id, username, display_name, COALESCE(age, 0), 
+            COALESCE(gender, ''), email, password, created_at FROM users WHERE id = $1`, id).
+			Scan(&updatedUser.ID, &updatedUser.Username, &updatedUser.DisplayName,
+				&updatedUser.Age, &updatedUser.Gender, &updatedUser.Email,
+				&updatedUser.Password, &updatedUser.CreatedAt)
 
 		if err != nil {
 			http.Error(w, "Failed to fetch updated user", http.StatusInternalServerError)
@@ -191,4 +210,19 @@ func UpdateUser(db *sql.DB) http.HandlerFunc {
 		updatedUser.Password = ""
 		json.NewEncoder(w).Encode(updatedUser)
 	}
+}
+
+// Helper functions for NULL handling
+func nullInt(val int) interface{} {
+	if val == 0 {
+		return nil
+	}
+	return val
+}
+
+func nullString(val string) interface{} {
+	if val == "" {
+		return nil
+	}
+	return val
 }

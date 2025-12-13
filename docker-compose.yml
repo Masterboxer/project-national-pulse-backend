@@ -1,6 +1,5 @@
 services:
   micro-journal-app:
-    container_name: micro-journal-app
     image: masterboxer/micro-journal-app:1.0.0
     build:
       context: .
@@ -9,32 +8,31 @@ services:
       - go-mod-cache:/go/pkg/mod
     command: air
     environment:
-      DATABASE_URL: "host=micro_journal_db user=postgres password=postgres dbname=pulse sslmode=disable"
+      DATABASE_URL: postgres://postgres:postgres@micro_journal_db:5432/journal?sslmode=disable
+
     ports:
       - "8000:8000"
     depends_on:
       - micro_journal_db
     networks:
-      - pulse-net
+      - journal-net
 
   micro_journal_db:
-    container_name: micro_journal_db
     image: postgres:17
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
-      POSTGRES_DB: pulse
+      POSTGRES_DB: journal
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
-      - pulse-net
+      - journal-net
 
 volumes:
   pgdata: {}
   go-mod-cache: {}
 
 networks:
-  pulse-net:
+  journal-net:
