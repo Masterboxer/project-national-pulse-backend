@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
@@ -15,7 +16,7 @@ import (
 
 func GetUsers(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query(`SELECT id, username, display_name, age, 
+		rows, err := db.Query(`SELECT id, username, display_name, dob, 
             gender, email, password, created_at FROM users`)
 		if err != nil {
 			http.Error(w, "Database query failed", http.StatusInternalServerError)
@@ -27,7 +28,7 @@ func GetUsers(db *sql.DB) http.HandlerFunc {
 		var users []models.User
 		for rows.Next() {
 			var u models.User
-			if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Age,
+			if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.DOB,
 				&u.Gender, &u.Email, &u.Password, &u.CreatedAt); err != nil {
 				http.Error(w, "Error scanning user data", http.StatusInternalServerError)
 				log.Println(err)
@@ -52,9 +53,9 @@ func GetUserById(db *sql.DB) http.HandlerFunc {
 		id := vars["id"]
 
 		var u models.User
-		err := db.QueryRow(`SELECT id, username, display_name, age, 
+		err := db.QueryRow(`SELECT id, username, display_name, dob, 
             gender, email, password, created_at FROM users WHERE id = $1`, id).
-			Scan(&u.ID, &u.Username, &u.DisplayName, &u.Age, &u.Gender, &u.Email,
+			Scan(&u.ID, &u.Username, &u.DisplayName, &u.DOB, &u.Gender, &u.Email,
 				&u.Password, &u.CreatedAt)
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -114,8 +115,13 @@ func CreateUser(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if u.Age == 0 {
-			http.Error(w, "Age is required and must be greater than 0", http.StatusBadRequest)
+		if time.Time(u.DOB).IsZero() {
+			http.Error(w, "Date of birth is required", http.StatusBadRequest)
+			return
+		}
+
+		if time.Time(u.DOB).After(time.Now()) {
+			http.Error(w, "Date of birth cannot be in the future", http.StatusBadRequest)
 			return
 		}
 
@@ -131,9 +137,9 @@ func CreateUser(db *sql.DB) http.HandlerFunc {
 		}
 
 		err = db.QueryRow(
-			`INSERT INTO users (username, display_name, age, gender, email, password, created_at) 
+			`INSERT INTO users (username, display_name, dob, gender, email, password, created_at) 
             VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, created_at`,
-			u.Username, u.DisplayName, u.Age, u.Gender, u.Email, string(hashedPassword),
+			u.Username, u.DisplayName, u.DOB, u.Gender, u.Email, string(hashedPassword),
 		).Scan(&u.ID, &u.CreatedAt)
 
 		if err != nil {
@@ -177,9 +183,13 @@ func UpdateUser(db *sql.DB) http.HandlerFunc {
 			args = append(args, u.Email)
 			i++
 		}
-		if u.Age != 0 {
-			setClauses = append(setClauses, "age = $"+strconv.Itoa(i))
-			args = append(args, u.Age)
+		if !time.Time(u.DOB).IsZero() {
+			if time.Time(u.DOB).After(time.Now()) {
+				http.Error(w, "Date of birth cannot be in the future", http.StatusBadRequest)
+				return
+			}
+			setClauses = append(setClauses, "dob = $"+strconv.Itoa(i))
+			args = append(args, u.DOB)
 			i++
 		}
 		if u.Gender != "" {
@@ -205,10 +215,10 @@ func UpdateUser(db *sql.DB) http.HandlerFunc {
 		}
 
 		var updatedUser models.User
-		err = db.QueryRow(`SELECT id, username, display_name, age, 
+		err = db.QueryRow(`SELECT id, username, display_name, dob, 
             gender, email, password, created_at FROM users WHERE id = $1`, id).
 			Scan(&updatedUser.ID, &updatedUser.Username, &updatedUser.DisplayName,
-				&updatedUser.Age, &updatedUser.Gender, &updatedUser.Email,
+				&updatedUser.DOB, &updatedUser.Gender, &updatedUser.Email,
 				&updatedUser.Password, &updatedUser.CreatedAt)
 
 		if err != nil {

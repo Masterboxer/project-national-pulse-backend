@@ -1,0 +1,7 @@
+ALTER TABLE users ADD COLUMN dob DATE;
+
+UPDATE users SET dob = CURRENT_DATE - (age * INTERVAL '1 year') WHERE age > 0;
+
+ALTER TABLE users DROP COLUMN age;
+
+ALTER TABLE users ALTER COLUMN dob SET NOT NULL;
