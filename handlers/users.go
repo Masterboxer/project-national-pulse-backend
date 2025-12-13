@@ -15,8 +15,8 @@ import (
 
 func GetUsers(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := db.Query(`SELECT id, username, display_name, COALESCE(age, 0), 
-            COALESCE(gender, ''), email, password, created_at FROM users`)
+		rows, err := db.Query(`SELECT id, username, display_name, age, 
+            gender, email, password, created_at FROM users`)
 		if err != nil {
 			http.Error(w, "Database query failed", http.StatusInternalServerError)
 			log.Println(err)
@@ -52,8 +52,8 @@ func GetUserById(db *sql.DB) http.HandlerFunc {
 		id := vars["id"]
 
 		var u models.User
-		err := db.QueryRow(`SELECT id, username, display_name, COALESCE(age, 0), 
-            COALESCE(gender, ''), email, password, created_at FROM users WHERE id = $1`, id).
+		err := db.QueryRow(`SELECT id, username, display_name, age, 
+            gender, email, password, created_at FROM users WHERE id = $1`, id).
 			Scan(&u.ID, &u.Username, &u.DisplayName, &u.Age, &u.Gender, &u.Email,
 				&u.Password, &u.CreatedAt)
 		if err != nil {
@@ -108,8 +108,19 @@ func CreateUser(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if u.Password == "" {
-			http.Error(w, "Password cannot be empty", http.StatusBadRequest)
+		// Validate required fields
+		if u.Username == "" || u.DisplayName == "" || u.Email == "" || u.Password == "" {
+			http.Error(w, "Username, display_name, email, and password are required", http.StatusBadRequest)
+			return
+		}
+
+		if u.Age == 0 {
+			http.Error(w, "Age is required and must be greater than 0", http.StatusBadRequest)
+			return
+		}
+
+		if u.Gender == "" {
+			http.Error(w, "Gender is required", http.StatusBadRequest)
 			return
 		}
 
@@ -122,8 +133,7 @@ func CreateUser(db *sql.DB) http.HandlerFunc {
 		err = db.QueryRow(
 			`INSERT INTO users (username, display_name, age, gender, email, password, created_at) 
             VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING id, created_at`,
-			u.Username, u.DisplayName, nullInt(u.Age), nullString(u.Gender),
-			u.Email, string(hashedPassword),
+			u.Username, u.DisplayName, u.Age, u.Gender, u.Email, string(hashedPassword),
 		).Scan(&u.ID, &u.CreatedAt)
 
 		if err != nil {
@@ -195,8 +205,8 @@ func UpdateUser(db *sql.DB) http.HandlerFunc {
 		}
 
 		var updatedUser models.User
-		err = db.QueryRow(`SELECT id, username, display_name, COALESCE(age, 0), 
-            COALESCE(gender, ''), email, password, created_at FROM users WHERE id = $1`, id).
+		err = db.QueryRow(`SELECT id, username, display_name, age, 
+            gender, email, password, created_at FROM users WHERE id = $1`, id).
 			Scan(&updatedUser.ID, &updatedUser.Username, &updatedUser.DisplayName,
 				&updatedUser.Age, &updatedUser.Gender, &updatedUser.Email,
 				&updatedUser.Password, &updatedUser.CreatedAt)
@@ -210,19 +220,4 @@ func UpdateUser(db *sql.DB) http.HandlerFunc {
 		updatedUser.Password = ""
 		json.NewEncoder(w).Encode(updatedUser)
 	}
-}
-
-// Helper functions for NULL handling
-func nullInt(val int) interface{} {
-	if val == 0 {
-		return nil
-	}
-	return val
-}
-
-func nullString(val string) interface{} {
-	if val == "" {
-		return nil
-	}
-	return val
 }

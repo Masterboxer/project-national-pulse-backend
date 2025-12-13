@@ -1,0 +1,8 @@
+UPDATE users SET age = 0 WHERE age IS NULL;
+UPDATE users SET gender = '' WHERE gender IS NULL;
+
+ALTER TABLE users 
+ALTER COLUMN age SET NOT NULL,
+ALTER COLUMN gender SET NOT NULL,
+ALTER COLUMN created_at SET NOT NULL,
+ALTER COLUMN created_at SET DEFAULT NOW();
