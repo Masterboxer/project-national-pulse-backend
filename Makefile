@@ -1,5 +1,5 @@
 MIGRATIONS_DIR=internal/database/migrations
-DB_URL=postgres://postgres:postgres@localhost:5432/journal?sslmode=disable
+DB_URL=postgres://postgres:postgres@localhost:5435/journal?sslmode=disable
 
 .PHONY: migrate-up migrate-down migrate-version migrate-create
 
