@@ -17,7 +17,7 @@ RUN go mod download
 COPY . .
 
 # Expose the app port
-EXPOSE 8000
+EXPOSE 8200
 
 # Default command to run Air
 CMD ["air"]

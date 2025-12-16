@@ -28,8 +28,8 @@ func main() {
 	handler := corsMiddleware(jsonContentTypeMiddleware(router))
 
 	// Start server
-	log.Println("Starting server on :8000...")
-	log.Fatal(http.ListenAndServe(":8000", handler))
+	log.Println("Starting server on :8200...")
+	log.Fatal(http.ListenAndServe(":8200", handler))
 }
 
 // Middleware to set the content-type to JSON

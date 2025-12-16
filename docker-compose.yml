@@ -11,7 +11,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@micro_journal_db:5432/journal?sslmode=disable
 
     ports:
-      - "8000:8000"
+      - "8200:8200"
     depends_on:
       - micro_journal_db
     networks:
