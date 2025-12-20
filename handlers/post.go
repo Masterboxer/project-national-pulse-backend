@@ -56,27 +56,30 @@ func GetPosts(db *sql.DB) http.HandlerFunc {
 func GetPostByID(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		id := vars["id"]
+		idStr, ok := vars["id"]
+		if !ok || idStr == "" {
+			http.Error(w, "ID parameter missing", http.StatusBadRequest)
+			return
+		}
+
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			http.Error(w, "Invalid ID format", http.StatusBadRequest)
+			return
+		}
 
 		var p models.Post
-		err := db.QueryRow(`
+		err = db.QueryRow(`
 			SELECT id, user_id, template_id, text, photo_path, created_at
-			FROM posts
-			WHERE id = $1`, id).
-			Scan(
-				&p.ID,
-				&p.UserID,
-				&p.TemplateID,
-				&p.Text,
-				&p.PhotoPath,
-				&p.CreatedAt,
-			)
+			FROM posts WHERE id = $1`, id).
+			Scan(&p.ID, &p.UserID, &p.TemplateID, &p.Text, &p.PhotoPath, &p.CreatedAt)
+
 		if err != nil {
 			if err == sql.ErrNoRows {
 				http.Error(w, "Post not found", http.StatusNotFound)
 			} else {
 				http.Error(w, "Database query failed", http.StatusInternalServerError)
-				log.Println(err)
+				log.Printf("GetPostByID error for id=%s: %v", idStr, err)
 			}
 			return
 		}
@@ -114,15 +117,22 @@ func CreatePost(db *sql.DB) http.HandlerFunc {
 		err := db.QueryRow(`
 			INSERT INTO posts (user_id, template_id, text, photo_path, created_at)
 			VALUES ($1, $2, $3, $4, NOW())
-			RETURNING id, template_id, created_at`,
+			RETURNING id, user_id, template_id, text, photo_path, created_at`,
 			p.UserID,
 			p.TemplateID,
 			p.Text,
 			p.PhotoPath,
-		).Scan(&p.ID, &p.TemplateID, &p.CreatedAt)
+		).Scan(
+			&p.ID,
+			&p.UserID,
+			&p.TemplateID,
+			&p.Text,
+			&p.PhotoPath,
+			&p.CreatedAt,
+		)
 		if err != nil {
 			http.Error(w, "Failed to create post", http.StatusInternalServerError)
-			log.Println(err)
+			log.Println("CreatePost error:", err)
 			return
 		}
 
