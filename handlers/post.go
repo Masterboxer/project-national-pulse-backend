@@ -259,7 +259,9 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
 		var userPost models.PostWithUser
 		userPostFound := false
 		err = db.QueryRow(`
-            SELECT p.id, p.user_id, p.template_id, p.text, p.photo_path, p.created_at, 
+            SELECT p.id, p.user_id, p.template_id, p.text, 
+                   COALESCE(p.photo_path, '') as photo_path, 
+                   p.created_at, 
                    u.username, u.display_name
             FROM posts p
             JOIN users u ON p.user_id = u.id
@@ -293,7 +295,7 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
                 p.user_id,
                 p.template_id,
                 p.text,
-                p.photo_path,
+                COALESCE(p.photo_path, '') as photo_path,
                 p.created_at,
                 u.username,
                 u.display_name
