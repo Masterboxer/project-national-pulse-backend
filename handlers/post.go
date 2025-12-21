@@ -252,13 +252,9 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		now := time.Now()
-		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-		endOfDay := startOfDay.Add(24 * time.Hour)
+		thirtysixHoursAgo := time.Now().Add(-36 * time.Hour)
 
-		var userPost models.PostWithUser
-		userPostFound := false
-		err = db.QueryRow(`
+		rows, err := db.Query(`
             SELECT p.id, p.user_id, p.template_id, p.text, 
                    COALESCE(p.photo_path, '') as photo_path, 
                    p.created_at, 
@@ -267,29 +263,41 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
             JOIN users u ON p.user_id = u.id
             WHERE p.user_id = $1
               AND p.created_at >= $2
-              AND p.created_at < $3
-            ORDER BY p.created_at DESC
-            LIMIT 1`,
-			userID, startOfDay, endOfDay,
-		).Scan(
-			&userPost.ID,
-			&userPost.UserID,
-			&userPost.TemplateID,
-			&userPost.Text,
-			&userPost.PhotoPath,
-			&userPost.CreatedAt,
-			&userPost.Username,
-			&userPost.DisplayName,
-		)
-		if err == nil {
-			userPostFound = true
-		} else if err != sql.ErrNoRows {
-			http.Error(w, "Failed to fetch user post", http.StatusInternalServerError)
-			log.Println("GetBuddyPosts user post error:", err)
+            ORDER BY p.created_at DESC`,
+			userID, thirtysixHoursAgo)
+		if err != nil {
+			http.Error(w, "Failed to fetch user posts", http.StatusInternalServerError)
+			log.Println("GetBuddyPosts user posts error:", err)
+			return
+		}
+		defer rows.Close()
+
+		var userPosts []models.PostWithUser
+		for rows.Next() {
+			var p models.PostWithUser
+			if err := rows.Scan(
+				&p.ID,
+				&p.UserID,
+				&p.TemplateID,
+				&p.Text,
+				&p.PhotoPath,
+				&p.CreatedAt,
+				&p.Username,
+				&p.DisplayName,
+			); err != nil {
+				http.Error(w, "Error scanning user posts", http.StatusInternalServerError)
+				log.Println("GetBuddyPosts user scan error:", err)
+				return
+			}
+			userPosts = append(userPosts, p)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, "Error iterating user posts", http.StatusInternalServerError)
+			log.Println("GetBuddyPosts user rows error:", err)
 			return
 		}
 
-		rows, err := db.Query(`
+		rows, err = db.Query(`
             SELECT
                 p.id,
                 p.user_id,
@@ -304,9 +312,10 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
             JOIN users u ON p.user_id = u.id
             WHERE b.user_id = $1
               AND p.user_id != $2
+              AND p.created_at >= $3
             ORDER BY p.created_at DESC
             LIMIT 49`,
-			userID, userID)
+			userID, userID, thirtysixHoursAgo)
 		if err != nil {
 			http.Error(w, "Database query failed", http.StatusInternalServerError)
 			log.Println("GetBuddyPosts buddy posts error:", err)
@@ -328,21 +337,19 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
 				&p.DisplayName,
 			); err != nil {
 				http.Error(w, "Error scanning buddy posts", http.StatusInternalServerError)
-				log.Println("GetBuddyPosts scan error:", err)
+				log.Println("GetBuddyPosts buddy scan error:", err)
 				return
 			}
 			buddyPosts = append(buddyPosts, p)
 		}
 		if err := rows.Err(); err != nil {
 			http.Error(w, "Error iterating buddy posts", http.StatusInternalServerError)
-			log.Println("GetBuddyPosts rows error:", err)
+			log.Println("GetBuddyPosts buddy rows error:", err)
 			return
 		}
 
 		var feed []models.PostWithUser
-		if userPostFound {
-			feed = append(feed, userPost)
-		}
+		feed = append(feed, userPosts...)
 		feed = append(feed, buddyPosts...)
 
 		w.Header().Set("Content-Type", "application/json")
