@@ -17,6 +17,19 @@ type User struct {
 	CreatedAt   string    `json:"created_at"`
 }
 
+type Buddy struct {
+	ID        int    `json:"id"`
+	UserID    int    `json:"user_id"`
+	BuddyID   int    `json:"buddy_id"`
+	CreatedAt string `json:"created_at"`
+}
+
+type UserBuddies struct {
+	ID          int    `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+}
+
 type CivilDate time.Time
 
 func (c CivilDate) MarshalJSON() ([]byte, error) {
