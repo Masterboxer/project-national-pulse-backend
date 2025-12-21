@@ -256,15 +256,17 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
 		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 		endOfDay := startOfDay.Add(24 * time.Hour)
 
-		var userPost models.Post
+		var userPost models.PostWithUser
 		userPostFound := false
 		err = db.QueryRow(`
-            SELECT id, user_id, template_id, text, photo_path, created_at
-            FROM posts
-            WHERE user_id = $1
-              AND created_at >= $2
-              AND created_at < $3
-            ORDER BY created_at DESC
+            SELECT p.id, p.user_id, p.template_id, p.text, p.photo_path, p.created_at, 
+                   u.username, u.display_name
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = $1
+              AND p.created_at >= $2
+              AND p.created_at < $3
+            ORDER BY p.created_at DESC
             LIMIT 1`,
 			userID, startOfDay, endOfDay,
 		).Scan(
@@ -274,6 +276,8 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
 			&userPost.Text,
 			&userPost.PhotoPath,
 			&userPost.CreatedAt,
+			&userPost.Username,
+			&userPost.DisplayName,
 		)
 		if err == nil {
 			userPostFound = true
@@ -283,7 +287,6 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// 2. Get buddy posts (excluding user's own posts to avoid duplicates)
 		rows, err := db.Query(`
             SELECT
                 p.id,
@@ -291,13 +294,16 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
                 p.template_id,
                 p.text,
                 p.photo_path,
-                p.created_at
+                p.created_at,
+                u.username,
+                u.display_name
             FROM posts p
             JOIN buddies b ON p.user_id = b.buddy_id
+            JOIN users u ON p.user_id = u.id
             WHERE b.user_id = $1
               AND p.user_id != $2
             ORDER BY p.created_at DESC
-            LIMIT 49`, // Leave room for user's post (total ~50)
+            LIMIT 49`,
 			userID, userID)
 		if err != nil {
 			http.Error(w, "Database query failed", http.StatusInternalServerError)
@@ -306,9 +312,9 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
 		}
 		defer rows.Close()
 
-		var buddyPosts []models.Post
+		var buddyPosts []models.PostWithUser
 		for rows.Next() {
-			var p models.Post
+			var p models.PostWithUser
 			if err := rows.Scan(
 				&p.ID,
 				&p.UserID,
@@ -316,6 +322,8 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
 				&p.Text,
 				&p.PhotoPath,
 				&p.CreatedAt,
+				&p.Username,
+				&p.DisplayName,
 			); err != nil {
 				http.Error(w, "Error scanning buddy posts", http.StatusInternalServerError)
 				log.Println("GetBuddyPosts scan error:", err)
@@ -329,8 +337,7 @@ func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// 3. Combine: user's post first (if exists), then buddies
-		var feed []models.Post
+		var feed []models.PostWithUser
 		if userPostFound {
 			feed = append(feed, userPost)
 		}
