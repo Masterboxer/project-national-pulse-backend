@@ -326,3 +326,60 @@ func RemoveBuddy(db *sql.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]string{"message": "Buddy removed successfully"})
 	}
 }
+
+func SearchUsers(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		query := r.URL.Query().Get("q")
+		if query == "" {
+			http.Error(w, "Search query 'q' parameter is required", http.StatusBadRequest)
+			return
+		}
+
+		if len(query) > 50 {
+			query = query[:50]
+		}
+
+		rows, err := db.Query(`
+			SELECT id, username, display_name, dob, gender, email, created_at
+			FROM users 
+			WHERE username ILIKE $1 
+			   OR display_name ILIKE $1
+			ORDER BY 
+				-- Prioritize exact matches first, then partial
+				CASE WHEN username ILIKE $2 THEN 0 ELSE 1 END +
+				CASE WHEN display_name ILIKE $2 THEN 0 ELSE 1 END,
+				-- Then by relevance (shorter distance to search term)
+				LENGTH(username) - LENGTH($1),
+				LENGTH(display_name) - LENGTH($1)
+			LIMIT 20`,
+			"%"+query+"%",
+			query+"%")
+		if err != nil {
+			http.Error(w, "Database search failed", http.StatusInternalServerError)
+			log.Println("SearchUsers error:", err)
+			return
+		}
+		defer rows.Close()
+
+		var users []models.UserSearchResult
+		for rows.Next() {
+			var u models.UserSearchResult
+			if err := rows.Scan(
+				&u.ID,
+				&u.Username,
+				&u.DisplayName,
+				&u.DOB,
+				&u.Gender,
+				&u.Email,
+				&u.CreatedAt); err != nil {
+				http.Error(w, "Error scanning search results", http.StatusInternalServerError)
+				log.Println(err)
+				return
+			}
+			users = append(users, u)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(users)
+	}
+}

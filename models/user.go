@@ -77,3 +77,13 @@ func (c CivilDate) Value() (driver.Value, error) {
 func (c CivilDate) String() string {
 	return time.Time(c).Format("2006-01-02")
 }
+
+type UserSearchResult struct {
+	ID          int       `json:"id"`
+	Username    string    `json:"username"`
+	DisplayName string    `json:"display_name"`
+	DOB         CivilDate `json:"dob"`
+	Gender      string    `json:"gender"`
+	Email       string    `json:"email"`
+	CreatedAt   string    `json:"created_at"`
+}
