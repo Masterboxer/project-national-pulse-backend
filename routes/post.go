@@ -14,6 +14,7 @@ func CreatePostRoutes(db *sql.DB, router *mux.Router) *mux.Router {
 
 	router.HandleFunc("/posts/{id}", handlers.GetPostByID(db)).Methods("GET")
 	router.HandleFunc("/posts/{id}", handlers.DeletePost(db)).Methods("DELETE")
+	router.HandleFunc("/posts/{userId}/feed", handlers.GetBuddyPosts(db)).Methods("GET")
 
 	return router
 }

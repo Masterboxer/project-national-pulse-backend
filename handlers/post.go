@@ -236,3 +236,107 @@ func GetTodayPostForUser(db *sql.DB) http.HandlerFunc {
 		json.NewEncoder(w).Encode(p)
 	}
 }
+
+func GetBuddyPosts(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		userIDStr, ok := vars["userId"]
+		if !ok || userIDStr == "" {
+			http.Error(w, "userId parameter missing", http.StatusBadRequest)
+			return
+		}
+
+		userID, err := strconv.Atoi(userIDStr)
+		if err != nil {
+			http.Error(w, "Invalid userId", http.StatusBadRequest)
+			return
+		}
+
+		now := time.Now()
+		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		endOfDay := startOfDay.Add(24 * time.Hour)
+
+		var userPost models.Post
+		userPostFound := false
+		err = db.QueryRow(`
+            SELECT id, user_id, template_id, text, photo_path, created_at
+            FROM posts
+            WHERE user_id = $1
+              AND created_at >= $2
+              AND created_at < $3
+            ORDER BY created_at DESC
+            LIMIT 1`,
+			userID, startOfDay, endOfDay,
+		).Scan(
+			&userPost.ID,
+			&userPost.UserID,
+			&userPost.TemplateID,
+			&userPost.Text,
+			&userPost.PhotoPath,
+			&userPost.CreatedAt,
+		)
+		if err == nil {
+			userPostFound = true
+		} else if err != sql.ErrNoRows {
+			http.Error(w, "Failed to fetch user post", http.StatusInternalServerError)
+			log.Println("GetBuddyPosts user post error:", err)
+			return
+		}
+
+		// 2. Get buddy posts (excluding user's own posts to avoid duplicates)
+		rows, err := db.Query(`
+            SELECT
+                p.id,
+                p.user_id,
+                p.template_id,
+                p.text,
+                p.photo_path,
+                p.created_at
+            FROM posts p
+            JOIN buddies b ON p.user_id = b.buddy_id
+            WHERE b.user_id = $1
+              AND p.user_id != $2
+            ORDER BY p.created_at DESC
+            LIMIT 49`, // Leave room for user's post (total ~50)
+			userID, userID)
+		if err != nil {
+			http.Error(w, "Database query failed", http.StatusInternalServerError)
+			log.Println("GetBuddyPosts buddy posts error:", err)
+			return
+		}
+		defer rows.Close()
+
+		var buddyPosts []models.Post
+		for rows.Next() {
+			var p models.Post
+			if err := rows.Scan(
+				&p.ID,
+				&p.UserID,
+				&p.TemplateID,
+				&p.Text,
+				&p.PhotoPath,
+				&p.CreatedAt,
+			); err != nil {
+				http.Error(w, "Error scanning buddy posts", http.StatusInternalServerError)
+				log.Println("GetBuddyPosts scan error:", err)
+				return
+			}
+			buddyPosts = append(buddyPosts, p)
+		}
+		if err := rows.Err(); err != nil {
+			http.Error(w, "Error iterating buddy posts", http.StatusInternalServerError)
+			log.Println("GetBuddyPosts rows error:", err)
+			return
+		}
+
+		// 3. Combine: user's post first (if exists), then buddies
+		var feed []models.Post
+		if userPostFound {
+			feed = append(feed, userPost)
+		}
+		feed = append(feed, buddyPosts...)
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(feed)
+	}
+}
