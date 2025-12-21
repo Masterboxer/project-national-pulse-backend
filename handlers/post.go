@@ -102,7 +102,7 @@ func CreatePost(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if p.TemplateID == 0 {
-			http.Error(w, "templateId is required", http.StatusBadRequest)
+			http.Error(w, "template_id is required", http.StatusBadRequest)
 			return
 		}
 		if p.Text == "" {
@@ -114,7 +114,30 @@ func CreatePost(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		now := time.Now().UTC()
+		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+		endOfDay := startOfDay.Add(24 * time.Hour)
+
+		var postCount int
 		err := db.QueryRow(`
+			SELECT COUNT(*) 
+			FROM posts 
+			WHERE user_id = $1 
+			  AND created_at >= $2 
+			  AND created_at < $3`,
+			p.UserID, startOfDay, endOfDay).Scan(&postCount)
+		if err != nil {
+			http.Error(w, "Failed to check daily limit", http.StatusInternalServerError)
+			log.Println("CreatePost daily limit check error:", err)
+			return
+		}
+
+		if postCount > 0 {
+			http.Error(w, "Daily post limit reached (1 post per day)", http.StatusForbidden)
+			return
+		}
+
+		err = db.QueryRow(`
 			INSERT INTO posts (user_id, template_id, text, photo_path, created_at)
 			VALUES ($1, $2, $3, $4, NOW())
 			RETURNING id, user_id, template_id, text, photo_path, created_at`,
