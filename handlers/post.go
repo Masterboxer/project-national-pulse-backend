@@ -14,15 +14,32 @@ import (
 	"masterboxer.com/project-micro-journal/services"
 )
 
-func GetPosts(db *sql.DB) http.HandlerFunc {
+func GetPostsByUser(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		userIDStr, ok := vars["userId"]
+		if !ok || userIDStr == "" {
+			http.Error(w, "userId parameter missing", http.StatusBadRequest)
+			return
+		}
+
+		userID, err := strconv.Atoi(userIDStr)
+		if err != nil {
+			http.Error(w, "Invalid userId", http.StatusBadRequest)
+			return
+		}
+
 		rows, err := db.Query(`
-			SELECT id, user_id, template_id, text, photo_path, created_at
+			SELECT id, user_id, template_id, text, 
+			       COALESCE(photo_path, '') as photo_path, 
+			       created_at
 			FROM posts
-			ORDER BY created_at DESC`)
+			WHERE user_id = $1
+			ORDER BY created_at DESC`,
+			userID)
 		if err != nil {
 			http.Error(w, "Database query failed", http.StatusInternalServerError)
-			log.Println(err)
+			log.Printf("GetPostsByUser error: %v", err)
 			return
 		}
 		defer rows.Close()
@@ -39,55 +56,20 @@ func GetPosts(db *sql.DB) http.HandlerFunc {
 				&p.CreatedAt,
 			); err != nil {
 				http.Error(w, "Error scanning posts", http.StatusInternalServerError)
-				log.Println(err)
+				log.Printf("GetPostsByUser scan error: %v", err)
 				return
 			}
 			posts = append(posts, p)
 		}
+
 		if err := rows.Err(); err != nil {
 			http.Error(w, "Error iterating posts", http.StatusInternalServerError)
-			log.Println(err)
+			log.Printf("GetPostsByUser rows error: %v", err)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(posts)
-	}
-}
-
-func GetPostByID(db *sql.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-		idStr, ok := vars["id"]
-		if !ok || idStr == "" {
-			http.Error(w, "ID parameter missing", http.StatusBadRequest)
-			return
-		}
-
-		id, err := strconv.Atoi(idStr)
-		if err != nil {
-			http.Error(w, "Invalid ID format", http.StatusBadRequest)
-			return
-		}
-
-		var p models.Post
-		err = db.QueryRow(`
-			SELECT id, user_id, template_id, text, photo_path, created_at
-			FROM posts WHERE id = $1`, id).
-			Scan(&p.ID, &p.UserID, &p.TemplateID, &p.Text, &p.PhotoPath, &p.CreatedAt)
-
-		if err != nil {
-			if err == sql.ErrNoRows {
-				http.Error(w, "Post not found", http.StatusNotFound)
-			} else {
-				http.Error(w, "Database query failed", http.StatusInternalServerError)
-				log.Printf("GetPostByID error for id=%s: %v", idStr, err)
-			}
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(p)
 	}
 }
 
