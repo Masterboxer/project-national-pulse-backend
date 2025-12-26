@@ -7,12 +7,6 @@ import (
 	"net/http"
 )
 
-type TokenRequest struct {
-	Token     string `json:"token"`
-	UserID    int    `json:"user_id"`
-	Timestamp string `json:"timestamp,omitempty"`
-}
-
 func RegisterTokenHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -38,31 +32,27 @@ func RegisterTokenHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		query := `UPDATE users SET fcm_token = $1, updated_at = NOW() WHERE id = $2`
-		result, err := db.Exec(query, req.Token, req.UserID)
+		// Insert or update token in fcm_tokens table
+		query := `
+			INSERT INTO fcm_tokens (user_id, token, created_at, updated_at)
+			VALUES ($1, $2, NOW(), NOW())
+			ON CONFLICT (user_id, token) 
+			DO UPDATE SET updated_at = NOW()`
+
+		_, err := db.Exec(query, req.UserID, req.Token)
 
 		if err != nil {
-			log.Printf("Database error updating FCM token: %v", err)
+			log.Printf("Database error saving FCM token: %v", err)
 			http.Error(w, "Failed to register token", http.StatusInternalServerError)
 			return
 		}
 
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			log.Printf("Error checking rows affected: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
-		}
-
-		if rowsAffected == 0 {
-			http.Error(w, "User not found", http.StatusNotFound)
-			return
-		}
+		log.Printf("✅ FCM token registered for user %d", req.UserID)
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{
-			"message": "Token registered successfully",
+			"message": "FCM token registered successfully",
 		})
 	}
 }

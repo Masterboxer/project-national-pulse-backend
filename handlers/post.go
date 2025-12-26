@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"masterboxer.com/project-micro-journal/models"
+	"masterboxer.com/project-micro-journal/services"
 )
 
 func GetPosts(db *sql.DB) http.HandlerFunc {
@@ -159,10 +161,70 @@ func CreatePost(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		go notifyBuddiesOfNewPost(db, p.UserID, p.Text)
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(p)
 	}
+}
+
+func notifyBuddiesOfNewPost(db *sql.DB, userID int, postText string) {
+	var displayName string
+	err := db.QueryRow(`SELECT display_name FROM users WHERE id = $1`, userID).Scan(&displayName)
+	if err != nil {
+		log.Printf("Error fetching user display name for notifications: %v", err)
+		displayName = "A friend"
+	}
+
+	rows, err := db.Query(`
+		SELECT DISTINCT ft.token
+		FROM buddies b
+		JOIN fcm_tokens ft ON b.buddy_id = ft.user_id
+		WHERE b.user_id = $1 
+		  AND ft.token IS NOT NULL 
+		  AND ft.token != ''`,
+		userID)
+	if err != nil {
+		log.Printf("Error fetching buddy FCM tokens: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var tokens []string
+	for rows.Next() {
+		var token string
+		if err := rows.Scan(&token); err != nil {
+			log.Printf("Error scanning FCM token: %v", err)
+			continue
+		}
+		tokens = append(tokens, token)
+	}
+
+	if len(tokens) == 0 {
+		log.Printf("No FCM tokens found for user %d's buddies", userID)
+		return
+	}
+
+	title := fmt.Sprintf("%s posted today!", displayName)
+	body := postText
+	if len(body) > 100 {
+		body = body[:97] + "..."
+	}
+
+	data := map[string]string{
+		"type":    "new_post",
+		"user_id": strconv.Itoa(userID),
+	}
+
+	successCount, failureCount, err := services.SendMultipleNotifications(tokens, title, body, data)
+	if err != nil {
+		log.Printf("Error sending notifications to buddies: %v", err)
+		return
+	}
+
+	log.Printf("Sent notifications for new post by user %d: %d successful, %d failed",
+		userID, successCount, failureCount)
 }
 
 func DeletePost(db *sql.DB) http.HandlerFunc {

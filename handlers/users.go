@@ -408,30 +408,24 @@ func RegisterFCMToken(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		_, err := db.Exec(
-			"UPDATE users SET fcm_token = $1 WHERE id = $2",
-			req.Token, req.UserID,
-		)
+		_, err := db.Exec(`
+			INSERT INTO fcm_tokens (user_id, token, created_at, updated_at)
+			VALUES ($1, $2, NOW(), NOW())
+			ON CONFLICT (user_id, token) 
+			DO UPDATE SET updated_at = NOW()`,
+			req.UserID, req.Token)
+
 		if err != nil {
 			http.Error(w, "Failed to register FCM token", http.StatusInternalServerError)
-			log.Println("RegisterFCMToken error:", err)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{
 			"message": "FCM token registered successfully",
 		})
 	}
-}
-
-func GetUserFCMToken(db *sql.DB, userID int) (string, error) {
-	var fcmToken string
-	err := db.QueryRow("SELECT fcm_token FROM users WHERE id = $1", userID).Scan(&fcmToken)
-	if err != nil {
-		return "", err
-	}
-	return fcmToken, nil
 }
 
 func AddBuddyWithNotification(db *sql.DB) http.HandlerFunc {
@@ -452,22 +446,18 @@ func AddBuddyWithNotification(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var username string
-		err := db.QueryRow("SELECT username FROM users WHERE id = $1", userID).Scan(&username)
+		var displayName string
+		err := db.QueryRow("SELECT display_name FROM users WHERE id = $1", userID).Scan(&displayName)
 		if err != nil {
 			http.Error(w, "User not found", http.StatusNotFound)
 			log.Println("Error getting username:", err)
 			return
 		}
 
-		var buddyFCMToken sql.NullString
-		err = db.QueryRow("SELECT fcm_token FROM users WHERE id = $1", req.BuddyID).Scan(&buddyFCMToken)
-		if err == sql.ErrNoRows {
+		var buddyExists bool
+		err = db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", req.BuddyID).Scan(&buddyExists)
+		if err != nil || !buddyExists {
 			http.Error(w, "Buddy user not found", http.StatusNotFound)
-			return
-		} else if err != nil {
-			http.Error(w, "Database error", http.StatusInternalServerError)
-			log.Println("Error getting buddy FCM token:", err)
 			return
 		}
 
@@ -482,23 +472,55 @@ func AddBuddyWithNotification(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		if buddyFCMToken.Valid && buddyFCMToken.String != "" {
+		go func() {
+			rows, err := db.Query(`
+				SELECT token FROM fcm_tokens 
+				WHERE user_id = $1 AND token IS NOT NULL AND token != ''`,
+				req.BuddyID)
+			if err != nil {
+				log.Printf("Error fetching buddy FCM tokens: %v", err)
+				return
+			}
+			defer rows.Close()
+
+			var tokens []string
+			for rows.Next() {
+				var token string
+				if err := rows.Scan(&token); err != nil {
+					log.Printf("Error scanning token: %v", err)
+					continue
+				}
+				tokens = append(tokens, token)
+			}
+
+			if len(tokens) == 0 {
+				log.Printf("No FCM tokens found for buddy %d", req.BuddyID)
+				return
+			}
+
 			data := map[string]string{
 				"type":    "buddy_added",
 				"user_id": strconv.Itoa(userID),
 			}
-			err = services.SendNotification(
-				buddyFCMToken.String,
+
+			_, _, err = services.SendMultipleNotifications(
+				tokens,
 				"New Buddy Request",
-				username+" added you as a buddy!",
+				displayName+" added you as a buddy!",
 				data,
 			)
 			if err != nil {
-				log.Println("Failed to send notification:", err)
+				log.Printf("Failed to send buddy notification: %v", err)
 			}
-		}
+		}()
 
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(map[string]string{"message": "Buddy added successfully"})
 	}
+}
+
+type TokenRequest struct {
+	Token     string `json:"token"`
+	UserID    int    `json:"user_id"`
+	Timestamp string `json:"timestamp,omitempty"`
 }
