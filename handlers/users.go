@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
 	"masterboxer.com/project-micro-journal/models"
+	"masterboxer.com/project-micro-journal/services"
 )
 
 func GetUsers(db *sql.DB) http.HandlerFunc {
@@ -381,5 +382,114 @@ func SearchUsers(db *sql.DB) http.HandlerFunc {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(users)
+	}
+}
+
+func RegisterFCMToken(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req TokenRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.Token == "" {
+			http.Error(w, "FCM token is required", http.StatusBadRequest)
+			return
+		}
+
+		// Changed from string comparison to int comparison
+		if req.UserID == 0 {
+			http.Error(w, "User ID is required", http.StatusBadRequest)
+			return
+		}
+
+		// Update user's FCM token in database
+		_, err := db.Exec(
+			"UPDATE users SET fcm_token = $1 WHERE id = $2",
+			req.Token, req.UserID,
+		)
+		if err != nil {
+			http.Error(w, "Failed to register FCM token", http.StatusInternalServerError)
+			log.Println("RegisterFCMToken error:", err)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{
+			"message": "FCM token registered successfully",
+		})
+	}
+}
+
+// GetUserFCMToken retrieves a user's FCM token
+func GetUserFCMToken(db *sql.DB, userID int) (string, error) {
+	var fcmToken string
+	err := db.QueryRow("SELECT fcm_token FROM users WHERE id = $1", userID).Scan(&fcmToken)
+	if err != nil {
+		return "", err
+	}
+	return fcmToken, nil
+}
+
+// Example: Send notification when buddy is added
+func AddBuddyWithNotification(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		userID, _ := strconv.Atoi(vars["user_id"])
+
+		var req struct {
+			BuddyID int `json:"buddy_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.BuddyID == userID {
+			http.Error(w, "Cannot add self as buddy", http.StatusBadRequest)
+			return
+		}
+
+		// Get the user who initiated the request
+		var username string
+		db.QueryRow("SELECT username FROM users WHERE id = $1", userID).Scan(&username)
+
+		// Check if buddy exists and get their FCM token
+		var buddyFCMToken string
+		err := db.QueryRow("SELECT fcm_token FROM users WHERE id = $1", req.BuddyID).Scan(&buddyFCMToken)
+		if err != nil {
+			http.Error(w, "Buddy user not found", http.StatusNotFound)
+			return
+		}
+
+		// Add buddy to database
+		_, err = db.Exec(`
+            INSERT INTO buddies (user_id, buddy_id) 
+            VALUES ($1, $2) 
+            ON CONFLICT (user_id, buddy_id) DO NOTHING 
+            RETURNING id`, userID, req.BuddyID)
+		if err != nil {
+			http.Error(w, "Failed to add buddy", http.StatusInternalServerError)
+			log.Println(err)
+			return
+		}
+
+		// Send notification to the buddy
+		if buddyFCMToken != "" {
+			data := map[string]string{
+				"type":    "buddy_added",
+				"user_id": strconv.Itoa(userID),
+			}
+			services.SendNotification(
+				buddyFCMToken,
+				"New Buddy Request",
+				username+" added you as a buddy!",
+				data,
+			)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]string{"message": "Buddy added successfully"})
 	}
 }

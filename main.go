@@ -7,6 +7,7 @@ import (
 	"github.com/gorilla/mux"
 	"masterboxer.com/project-micro-journal/database"
 	"masterboxer.com/project-micro-journal/routes"
+	"masterboxer.com/project-micro-journal/services"
 )
 
 func main() {
@@ -16,12 +17,17 @@ func main() {
 	}
 	defer db.Close()
 
+	if err := services.InitFirebase("./project-micro-journal-firebase-adminsdk-fbsvc-e626a40f9b.json"); err != nil {
+		log.Printf("Warning: Firebase initialization failed: %v", err)
+	}
+
 	router := mux.NewRouter()
 
 	routes.CreateUserRoutes(db, router)
 	routes.CreateAuthenticationRoutes(db, router)
 	routes.CreatePostRoutes(db, router)
 	routes.CreateTemplateRoutes(db, router)
+	routes.CreateNotificationRoutes(db, router)
 
 	handler := corsMiddleware(jsonContentTypeMiddleware(router))
 

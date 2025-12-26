@@ -14,6 +14,7 @@ type User struct {
 	Gender      string    `json:"gender"`
 	Email       string    `json:"email"`
 	Password    string    `json:"password,omitempty"`
+	FCMToken    string    `json:"fcm_token,omitempty"`
 	CreatedAt   string    `json:"created_at"`
 }
 
