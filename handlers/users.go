@@ -110,7 +110,6 @@ func CreateUser(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Validate required fields
 		if u.Username == "" || u.DisplayName == "" || u.Email == "" || u.Password == "" {
 			http.Error(w, "Username, display_name, email, and password are required", http.StatusBadRequest)
 			return
@@ -283,18 +282,24 @@ func AddBuddy(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var buddyExists int
-		db.QueryRow("SELECT 1 FROM users WHERE id = $1", req.BuddyID).Scan(&buddyExists)
-		if buddyExists == 0 {
+		var exists bool
+		err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", req.BuddyID).Scan(&exists)
+		if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			log.Println("Error checking buddy existence:", err)
+			return
+		}
+
+		if !exists {
 			http.Error(w, "Buddy user not found", http.StatusNotFound)
 			return
 		}
 
-		_, err := db.Exec(`
+		_, err = db.Exec(`
             INSERT INTO buddies (user_id, buddy_id) 
             VALUES ($1, $2) 
-            ON CONFLICT (user_id, buddy_id) DO NOTHING 
-            RETURNING id`, userID, req.BuddyID)
+            ON CONFLICT (user_id, buddy_id) DO NOTHING`,
+			userID, req.BuddyID)
 		if err != nil {
 			http.Error(w, "Failed to add buddy", http.StatusInternalServerError)
 			log.Println(err)
@@ -398,13 +403,11 @@ func RegisterFCMToken(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Changed from string comparison to int comparison
 		if req.UserID == 0 {
 			http.Error(w, "User ID is required", http.StatusBadRequest)
 			return
 		}
 
-		// Update user's FCM token in database
 		_, err := db.Exec(
 			"UPDATE users SET fcm_token = $1 WHERE id = $2",
 			req.Token, req.UserID,
@@ -422,7 +425,6 @@ func RegisterFCMToken(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-// GetUserFCMToken retrieves a user's FCM token
 func GetUserFCMToken(db *sql.DB, userID int) (string, error) {
 	var fcmToken string
 	err := db.QueryRow("SELECT fcm_token FROM users WHERE id = $1", userID).Scan(&fcmToken)
@@ -432,7 +434,6 @@ func GetUserFCMToken(db *sql.DB, userID int) (string, error) {
 	return fcmToken, nil
 }
 
-// Example: Send notification when buddy is added
 func AddBuddyWithNotification(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -451,42 +452,50 @@ func AddBuddyWithNotification(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Get the user who initiated the request
 		var username string
-		db.QueryRow("SELECT username FROM users WHERE id = $1", userID).Scan(&username)
-
-		// Check if buddy exists and get their FCM token
-		var buddyFCMToken string
-		err := db.QueryRow("SELECT fcm_token FROM users WHERE id = $1", req.BuddyID).Scan(&buddyFCMToken)
+		err := db.QueryRow("SELECT username FROM users WHERE id = $1", userID).Scan(&username)
 		if err != nil {
-			http.Error(w, "Buddy user not found", http.StatusNotFound)
+			http.Error(w, "User not found", http.StatusNotFound)
+			log.Println("Error getting username:", err)
 			return
 		}
 
-		// Add buddy to database
+		var buddyFCMToken sql.NullString
+		err = db.QueryRow("SELECT fcm_token FROM users WHERE id = $1", req.BuddyID).Scan(&buddyFCMToken)
+		if err == sql.ErrNoRows {
+			http.Error(w, "Buddy user not found", http.StatusNotFound)
+			return
+		} else if err != nil {
+			http.Error(w, "Database error", http.StatusInternalServerError)
+			log.Println("Error getting buddy FCM token:", err)
+			return
+		}
+
 		_, err = db.Exec(`
             INSERT INTO buddies (user_id, buddy_id) 
             VALUES ($1, $2) 
-            ON CONFLICT (user_id, buddy_id) DO NOTHING 
-            RETURNING id`, userID, req.BuddyID)
+            ON CONFLICT (user_id, buddy_id) DO NOTHING`,
+			userID, req.BuddyID)
 		if err != nil {
 			http.Error(w, "Failed to add buddy", http.StatusInternalServerError)
 			log.Println(err)
 			return
 		}
 
-		// Send notification to the buddy
-		if buddyFCMToken != "" {
+		if buddyFCMToken.Valid && buddyFCMToken.String != "" {
 			data := map[string]string{
 				"type":    "buddy_added",
 				"user_id": strconv.Itoa(userID),
 			}
-			services.SendNotification(
-				buddyFCMToken,
+			err = services.SendNotification(
+				buddyFCMToken.String,
 				"New Buddy Request",
 				username+" added you as a buddy!",
 				data,
 			)
+			if err != nil {
+				log.Println("Failed to send notification:", err)
+			}
 		}
 
 		w.WriteHeader(http.StatusCreated)

@@ -18,7 +18,7 @@ func CreateUserRoutes(db *sql.DB, router *mux.Router) *mux.Router {
 
 	// Buddy routes
 	router.HandleFunc("/users/{user_id}/buddies", handlers.GetUserBuddies(db)).Methods("GET")
-	router.HandleFunc("/users/{user_id}/buddies", handlers.AddBuddy(db)).Methods("POST")
+	router.HandleFunc("/users/{user_id}/buddies", handlers.AddBuddyWithNotification(db)).Methods("POST")
 	router.HandleFunc("/users/{user_id}/buddies/{buddy_id}", handlers.RemoveBuddy(db)).Methods("DELETE")
 
 	return router
